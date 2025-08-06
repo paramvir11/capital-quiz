@@ -6,52 +6,48 @@ const db = new pg.Client({
   user: "postgres",
   host: "localhost",
   database: "flags",
-  password: "Iphone5s",
+  password: "Iphone5s", // Change to your actual password
   port: 5432,
 });
 
 const app = express();
 const port = 3000;
 
-db.connect();
-
 let quiz = [];
-db.query("SELECT * FROM flags", (err, res) => {
-  if (err) {
-    console.error("Error executing query", err.stack);
-  } else {
-    quiz = res.rows;
-  }
-  db.end();
-});
-
+let currentQuestion = {};
 let totalCorrect = 0;
 
 // Middleware
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
+app.set("view engine", "ejs");
 
-let currentQuestion = {};
+// Routes
 
 // GET home page
 app.get("/", async (req, res) => {
   totalCorrect = 0;
   await nextQuestion();
-  console.log(currentQuestion);
+  console.log("First Question:", currentQuestion);
   res.render("index.ejs", { question: currentQuestion });
 });
 
-// POST a new post
-app.post("/submit", (req, res) => {
-  let answer = req.body.answer.trim();
+// POST submitted answer
+app.post("/submit", async (req, res) => {
+  const answer = req.body.answer?.trim();
   let isCorrect = false;
-  if (currentQuestion.capital.toLowerCase() === answer.toLowerCase()) {
-    totalCorrect++;
-    console.log(totalCorrect);
-    isCorrect = true;
+
+  if (currentQuestion?.capital && answer) {
+    console.log("User answer:", answer);
+    console.log("Correct answer:", currentQuestion.capital);
+
+    if (currentQuestion.capital.toLowerCase() === answer.toLowerCase()) {
+      totalCorrect++;
+      isCorrect = true;
+    }
   }
 
-  nextQuestion();
+  await nextQuestion();
   res.render("index.ejs", {
     question: currentQuestion,
     wasCorrect: isCorrect,
@@ -59,11 +55,33 @@ app.post("/submit", (req, res) => {
   });
 });
 
+// Utility: Get next random question
 async function nextQuestion() {
+  if (quiz.length === 0) {
+    currentQuestion = { country: "N/A", capital: "N/A" };
+    return;
+  }
   const randomCountry = quiz[Math.floor(Math.random() * quiz.length)];
   currentQuestion = randomCountry;
 }
 
-app.listen(port, () => {
-  console.log(`Server is running at http://localhost:${port}`);
-});
+// Start app only after DB is ready
+async function startServer() {
+  try {
+    await db.connect();
+    const result = await db.query("SELECT * FROM flags");
+    quiz = result.rows;
+
+    if (quiz.length === 0) {
+      console.warn("⚠️ Warning: No quiz data found in DB.");
+    }
+
+    app.listen(port, () => {
+      console.log(`✅ Server running at http://localhost:${port}`);
+    });
+  } catch (err) {
+    console.error("❌ Failed to start server:", err);
+  }
+}
+
+startServer();
